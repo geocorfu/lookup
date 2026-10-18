@@ -48,3 +48,7 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 - The still countdown is 10 s measured from the last step; it becomes visible after `stillGapMs` (2 s).
 - Suppression (vehicle activity OR speed, zone, outside window) forces IDLE and ignores steps until all clear.
 - `stillGapMs` and `candidateResetMs` are guesses; tune them in Step 4 field tests (screen-off step batching may need larger gaps).
+### Step 4 — real sensors (pending field test)
+- Nord step detector is `oplus pedometer`, non-wakeup only: with screen off, events may be batched or held until wake. Step log lines carry "sensor delay" to measure it.
+- FGS type `health` (ACTIVITY_RECOGNITION) for now; `location` gets added with GPS speed in Step 5.
+- Wireless adb: after re-pairing, mDNS can list the old and new endpoints; disconnect the stale one. Log file: `adb exec-out run-as com.example.lookup cat files/lookup.log`.
