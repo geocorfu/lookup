@@ -54,6 +54,12 @@ val PERMISSION_STEPS = listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
         ),
     ),
+    PermissionStep(
+        title = "Location all the time",
+        explanation = "Home and Work zones and scheduled starts only work if Android lets Look Up use " +
+            "location in the background. On the next screen choose \"Allow all the time\".",
+        permissions = listOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+    ),
 )
 
 fun firstMissingStep(context: Context): PermissionStep? = PERMISSION_STEPS.firstOrNull { step ->

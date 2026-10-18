@@ -24,10 +24,15 @@ import com.example.lookup.core.DetectionState
 import com.example.lookup.core.DetectionStateMachine
 import com.example.lookup.core.Event
 import com.example.lookup.core.VehicleSpeedDetector
+import com.example.lookup.core.ZoneTracker
+import com.example.lookup.settings.SettingsRepository
+import java.time.LocalDateTime
 import com.example.lookup.log.EventLog
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.Geofence
+import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -44,6 +49,7 @@ class DetectionService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private val machine = DetectionStateMachine()
     private val vehicle = VehicleSpeedDetector()
+    private val zones = ZoneTracker()
     private var gpsOn = false
     private var lastState: DetectionState? = null
     private var running = false
@@ -89,6 +95,15 @@ class DetectionService : Service() {
         }
     }
 
+    private val geofenceIntent: PendingIntent by lazy {
+        PendingIntent.getBroadcast(
+            this,
+            1,
+            Intent(this, GeofenceReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+        )
+    }
+
     private val transitionsIntent: PendingIntent by lazy {
         PendingIntent.getBroadcast(
             this,
@@ -108,16 +123,20 @@ class DetectionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            EventLog.log("service stop requested")
+        startForegroundWithTypes()
+        if (!SettingsRepository.load(this).applied.schedule.isActive(LocalDateTime.now())) {
+            EventLog.log("service start outside active window, stopping")
             stopSelf()
             return START_NOT_STICKY
         }
-        startForegroundWithTypes()
         if (!running) {
             running = true
             EventLog.log("service started (restart=${intent == null})")
             DetectionHub.sink = { event -> handler.post { handle(event) } }
+            DetectionHub.zoneSink = { id, inside ->
+                handler.post { zones.update(id, inside)?.let { handle(Event.ZoneChanged(it)) } }
+            }
+            registerZones()
             registerStepSensor()
             requestActivityTransitions()
             handler.post(tick)
@@ -132,7 +151,9 @@ class DetectionService : Service() {
         sensorManager.unregisterListener(counterListener)
         setGps(false)
         ActivityRecognition.getClient(this).removeActivityTransitionUpdates(transitionsIntent)
+        LocationServices.getGeofencingClient(this).removeGeofences(geofenceIntent)
         DetectionHub.sink = null
+        DetectionHub.zoneSink = null
         DetectionHub.update { it.copy(serviceRunning = false) }
         EventLog.log("service destroyed")
         super.onDestroy()
@@ -226,6 +247,45 @@ class DetectionService : Service() {
         DetectionHub.update { it.copy(stepSensor = description) }
     }
 
+    private fun registerZones() {
+        val list = SettingsRepository.load(this).applied.zones
+        if (list.isEmpty()) {
+            DetectionHub.update { it.copy(zones = "none set") }
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            EventLog.log("zones skipped: no background location")
+            DetectionHub.update { it.copy(zones = "needs 'Allow all the time'") }
+            return
+        }
+        val fences = list.map { zone ->
+            Geofence.Builder()
+                .setRequestId(zone.id)
+                .setCircularRegion(zone.latitude, zone.longitude, zone.radiusM.toFloat())
+                .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+                .build()
+        }
+        val request = GeofencingRequest.Builder()
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+            .addGeofences(fences)
+            .build()
+        val names = list.joinToString { "${it.name} ${it.radiusM}m" }
+        try {
+            LocationServices.getGeofencingClient(this).addGeofences(request, geofenceIntent)
+                .addOnSuccessListener {
+                    EventLog.log("geofences registered: $names")
+                    DetectionHub.update { it.copy(zones = "registered: $names") }
+                }
+                .addOnFailureListener { e ->
+                    EventLog.log("geofences failed: $e")
+                    DetectionHub.update { it.copy(zones = "failed: ${e.message}") }
+                }
+        } catch (e: SecurityException) {
+            EventLog.log("geofences denied: $e")
+        }
+    }
+
     private fun requestActivityTransitions() {
         val transitions = ActivityTransitionReceiver.MONITORED.flatMap { type ->
             listOf(ActivityTransition.ACTIVITY_TRANSITION_ENTER, ActivityTransition.ACTIVITY_TRANSITION_EXIT).map {
@@ -263,15 +323,17 @@ class DetectionService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val TICK_MS = 1_000L
         private const val GPS_INTERVAL_MS = 1_000L
-        private const val ACTION_STOP = "com.example.lookup.STOP"
 
         fun start(context: Context) {
-            context.startForegroundService(Intent(context, DetectionService::class.java))
+            try {
+                context.startForegroundService(Intent(context, DetectionService::class.java))
+            } catch (e: IllegalStateException) {
+                EventLog.log("service start refused by Android: $e")
+            }
         }
 
-        /** Debug-only control while detection does not block anything. */
         fun stop(context: Context) {
-            context.startService(Intent(context, DetectionService::class.java).setAction(ACTION_STOP))
+            context.stopService(Intent(context, DetectionService::class.java))
         }
     }
 }

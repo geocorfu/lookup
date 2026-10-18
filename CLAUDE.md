@@ -60,3 +60,13 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 - GPS (fused, high accuracy, 1 s) runs only when state != IDLE or vehicle active. FGS types health|location (0x108); falls back to health if location refused.
 - Step counter total is logged alongside detector events to check the ~1 event/s detector rate.
 - Registering the step detector emits one spurious step immediately; harmless (candidate resets after 3 s).
+### Step 6 — zones and active windows (pending field test)
+- Core: `Schedule`/`TimeWindow` (multi-range, per-day, overnight wrap, merged edges), `StoredSettings` (edits inside a window stay pending until it ends), `Zone` (100–300 m), `ZoneTracker`, `SettingsCodec`.
+- App: settings in SharedPreferences (no DataStore needed); `WindowScheduler.sync` starts/stops the service and sets one exact alarm (USE_EXACT_ALARM) at the next edge; boot and reinstall resync.
+- Geofences need ACCESS_BACKGROUND_LOCATION ("Allow all the time", onboarding step 4); location FGS type is refused from background without it (falls back to health).
+- Default schedule: every day 07:00–23:00.
+
+## Pending field tests
+- Step 4.8 + Step 5: bus/car ride (vehicle by speed, no blocking while riding, release ~60 s after getting off).
+- Step 4 threshold: compare step counter vs detector totals on a ~1 min walk.
+- Step 6: Home zone walk; window starting in 5 min; edit during a window stays pending.

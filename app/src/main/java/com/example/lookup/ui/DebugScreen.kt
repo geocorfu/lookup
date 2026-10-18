@@ -19,14 +19,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.lookup.sensing.DetectionHub
 import com.example.lookup.sensing.DetectionService
+import com.example.lookup.settings.WindowScheduler
 
 @Composable
-fun DebugScreen() {
+fun DebugScreen(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val status by DetectionHub.status.collectAsState()
     val snapshot = status.snapshot
 
-    LaunchedEffect(Unit) { DetectionService.start(context) }
+    LaunchedEffect(Unit) { WindowScheduler.sync(context) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -47,11 +48,14 @@ fun DebugScreen() {
         Field("Suppressed (vehicle/zone/window)", snapshot?.suppressed?.toString() ?: "-")
         Field("GPS", status.gps)
         Field("Vehicle by speed", status.vehicleSpeedActive.toString())
+        Field("Active window", status.windowStatus)
+        Field("Zones", status.zones)
         Field("Service running", status.serviceRunning.toString())
         Field("Step sensor", status.stepSensor)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { DetectionService.start(context) }) { Text("Start") }
+            Button(onClick = { WindowScheduler.sync(context) }) { Text("Sync") }
             OutlinedButton(onClick = { DetectionService.stop(context) }) { Text("Stop (debug)") }
+            OutlinedButton(onClick = onOpenSettings) { Text("Settings") }
         }
     }
 }

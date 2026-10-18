@@ -12,11 +12,13 @@ import com.example.lookup.log.EventLog
 import com.example.lookup.ui.DebugScreen
 import com.example.lookup.ui.OnboardingScreen
 import com.example.lookup.ui.PermissionStep
+import com.example.lookup.ui.SettingsScreen
 import com.example.lookup.ui.firstMissingStep
 
 class MainActivity : ComponentActivity() {
 
     private var missingStep by mutableStateOf<PermissionStep?>(null)
+    private var showSettings by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,10 +28,10 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface {
                     val step = missingStep
-                    if (step != null) {
-                        OnboardingScreen(step, onChanged = ::refresh)
-                    } else {
-                        DebugScreen()
+                    when {
+                        step != null -> OnboardingScreen(step, onChanged = ::refresh)
+                        showSettings -> SettingsScreen(onBack = { showSettings = false })
+                        else -> DebugScreen(onOpenSettings = { showSettings = true })
                     }
                 }
             }
