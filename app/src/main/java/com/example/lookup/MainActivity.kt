@@ -3,22 +3,45 @@ package com.example.lookup
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.example.lookup.log.EventLog
+import com.example.lookup.ui.DebugScreen
+import com.example.lookup.ui.OnboardingScreen
+import com.example.lookup.ui.PermissionStep
+import com.example.lookup.ui.firstMissingStep
 
 class MainActivity : ComponentActivity() {
+
+    private var missingStep by mutableStateOf<PermissionStep?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EventLog.init(this)
+        refresh()
         setContent {
             MaterialTheme {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Look Up", style = MaterialTheme.typography.displayMedium)
+                Surface {
+                    val step = missingStep
+                    if (step != null) {
+                        OnboardingScreen(step, onChanged = ::refresh)
+                    } else {
+                        DebugScreen()
+                    }
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refresh()
+    }
+
+    private fun refresh() {
+        missingStep = firstMissingStep(this)
     }
 }
