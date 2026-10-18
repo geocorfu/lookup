@@ -1,5 +1,6 @@
 package com.example.lookup.sensing
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -21,26 +23,35 @@ import com.example.lookup.R
 import com.example.lookup.core.DetectionState
 import com.example.lookup.core.DetectionStateMachine
 import com.example.lookup.core.Event
+import com.example.lookup.core.VehicleSpeedDetector
 import com.example.lookup.log.EventLog
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 /**
- * Foreground service of type "health": it is backed by ACTIVITY_RECOGNITION, may be started
- * from boot later, and needs no location. GPS speed (Step 5) will add the "location" type.
+ * Foreground service of type "health" (backed by ACTIVITY_RECOGNITION) plus "location" for GPS
+ * speed. GPS runs only while a walk is in progress or a vehicle is active, to save battery.
  * All state machine calls happen on the main looper.
  */
 class DetectionService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val machine = DetectionStateMachine()
+    private val vehicle = VehicleSpeedDetector()
+    private var gpsOn = false
     private var lastState: DetectionState? = null
     private var running = false
     private lateinit var sensorManager: SensorManager
 
     private val tick = object : Runnable {
         override fun run() {
+            vehicle.onTick(SystemClock.elapsedRealtime())?.let { onVehicleSpeedChanged(it, "GPS silent") }
             handle(Event.Tick)
             handler.postDelayed(this, TICK_MS)
         }
@@ -53,6 +64,29 @@ class DetectionService : Service() {
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+
+    private val counterListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            EventLog.log("step counter total=${event.values[0].toLong()}")
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            for (location in result.locations) {
+                if (!location.hasSpeed()) continue
+                val accuracy = if (location.hasSpeedAccuracy()) location.speedAccuracyMetersPerSecond else null
+                val kmh = location.speed * 3.6
+                val summary = "%.1f km/h (acc %s)".format(kmh, accuracy?.let { "%.1f m/s".format(it) } ?: "n/a")
+                EventLog.log("GPS speed $summary")
+                DetectionHub.update { it.copy(gps = "on, $summary") }
+                vehicle.onSample(SystemClock.elapsedRealtime(), location.speed.toDouble(), accuracy)
+                    ?.let { onVehicleSpeedChanged(it, "GPS") }
+            }
+        }
     }
 
     private val transitionsIntent: PendingIntent by lazy {
@@ -79,7 +113,7 @@ class DetectionService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, notification("Starting"), ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
+        startForegroundWithTypes()
         if (!running) {
             running = true
             EventLog.log("service started (restart=${intent == null})")
@@ -95,6 +129,8 @@ class DetectionService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(tick)
         sensorManager.unregisterListener(stepListener)
+        sensorManager.unregisterListener(counterListener)
+        setGps(false)
         ActivityRecognition.getClient(this).removeActivityTransitionUpdates(transitionsIntent)
         DetectionHub.sink = null
         DetectionHub.update { it.copy(serviceRunning = false) }
@@ -121,6 +157,56 @@ class DetectionService : Service() {
                 .notify(NOTIFICATION_ID, notification(snapshot.state.name))
         }
         DetectionHub.update { it.copy(snapshot = snapshot) }
+        setGps(snapshot.state != DetectionState.IDLE || vehicle.active)
+    }
+
+    private fun onVehicleSpeedChanged(active: Boolean, source: String) {
+        EventLog.log("vehicle by speed -> $active ($source)")
+        DetectionHub.update { it.copy(vehicleSpeedActive = active) }
+        handle(Event.VehicleSpeedDetected(active))
+    }
+
+    private fun hasFineLocation() =
+        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /** Location type needs location permission and a foreground start; fall back to health only. */
+    private fun startForegroundWithTypes() {
+        val health = ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+        if (hasFineLocation()) {
+            try {
+                startForeground(NOTIFICATION_ID, notification("Starting"), health or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                return
+            } catch (e: SecurityException) {
+                EventLog.log("location FGS type refused, health only: $e")
+            }
+        }
+        startForeground(NOTIFICATION_ID, notification("Starting"), health)
+    }
+
+    private fun setGps(on: Boolean) {
+        if (on == gpsOn) return
+        val client = LocationServices.getFusedLocationProviderClient(this)
+        if (on) {
+            if (!hasFineLocation()) {
+                DetectionHub.update { it.copy(gps = "no permission") }
+                return
+            }
+            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, GPS_INTERVAL_MS).build()
+            try {
+                client.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+                gpsOn = true
+                EventLog.log("GPS on")
+                DetectionHub.update { it.copy(gps = "on, waiting for fix") }
+            } catch (e: SecurityException) {
+                EventLog.log("GPS denied: $e")
+                DetectionHub.update { it.copy(gps = "denied") }
+            }
+        } else {
+            client.removeLocationUpdates(locationCallback)
+            gpsOn = false
+            EventLog.log("GPS off")
+            DetectionHub.update { it.copy(gps = "off") }
+        }
     }
 
     private fun registerStepSensor() {
@@ -132,6 +218,9 @@ class DetectionService : Service() {
             return
         }
         val ok = sensorManager.registerListener(stepListener, sensor, SensorManager.SENSOR_DELAY_FASTEST, 0, handler)
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let {
+            sensorManager.registerListener(counterListener, it, SensorManager.SENSOR_DELAY_NORMAL, 0, handler)
+        }
         val description = "${sensor.name} (wakeUp=${sensor.isWakeUpSensor}, registered=$ok)"
         EventLog.log("step sensor: $description")
         DetectionHub.update { it.copy(stepSensor = description) }
@@ -173,6 +262,7 @@ class DetectionService : Service() {
         private const val CHANNEL_ID = "detection"
         private const val NOTIFICATION_ID = 1
         private const val TICK_MS = 1_000L
+        private const val GPS_INTERVAL_MS = 1_000L
         private const val ACTION_STOP = "com.example.lookup.STOP"
 
         fun start(context: Context) {

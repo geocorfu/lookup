@@ -45,6 +45,8 @@ fun DebugScreen() {
         Field("Last raw activity", status.lastRawActivity)
         Field("Activity used", snapshot?.lastActivity?.name ?: "-")
         Field("Suppressed (vehicle/zone/window)", snapshot?.suppressed?.toString() ?: "-")
+        Field("GPS", status.gps)
+        Field("Vehicle by speed", status.vehicleSpeedActive.toString())
         Field("Service running", status.serviceRunning.toString())
         Field("Step sensor", status.stepSensor)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -10,6 +10,8 @@ data class DebugStatus(
     val snapshot: Snapshot? = null,
     val lastRawActivity: String = "none yet",
     val stepSensor: String = "not registered",
+    val gps: String = "off",
+    val vehicleSpeedActive: Boolean = false,
 )
 
 /** Connects broadcast receivers and the UI to the running service. */

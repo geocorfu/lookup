@@ -55,3 +55,8 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 - Nord step detector fires ~1 event/s (vs ~1.8 real steps/s), so 10 "steps" is about 10 s of walking. Not yet known if capped or skipping.
 - AR reported WALKING ~23 s late and STILL ~2 min late, confirming steps must drive timing.
 - Wireless adb: after re-pairing, mDNS can list the old and new endpoints; disconnect the stale one. Log file: `adb exec-out run-as com.example.lookup cat files/lookup.log`.
+### Step 5 — vehicle speed (pending bus/car field test)
+- `VehicleSpeedDetector` + `VehicleConfig` (core): on ≥20 km/h for 10 s, off <10 km/h (or GPS silent) for 60 s, 10–20 km/h holds state; samples with speed accuracy >3 m/s ignored. All guesses until bus logs.
+- GPS (fused, high accuracy, 1 s) runs only when state != IDLE or vehicle active. FGS types health|location (0x108); falls back to health if location refused.
+- Step counter total is logged alongside detector events to check the ~1 event/s detector rate.
+- Registering the step detector emits one spurious step immediately; harmless (candidate resets after 3 s).
