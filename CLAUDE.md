@@ -36,3 +36,9 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 - Activity Recognition lags too much to drive timing; steps lead, AR vetoes.
 - The settings ranges and the next-window rule for zone edits close escape hatches.
 - Shade/lock screen media controls are the top technical risk; Step 7 tests them first.
+### Step 2 — scaffold
+- Toolchain: JDK 17 (Microsoft), SDK in `%LOCALAPPDATA%\Android\Sdk`, Gradle 9.8.1, AGP 9.4.1 (built-in Kotlin), Kotlin 2.4.21, Compose BOM 2026.09.00. compileSdk 37, targetSdk 36.
+- `sdkmanager` is deprecated; use `cmdline-tools/latest/bin/android.exe --no-metrics sdk install|list`.
+- Dev phone is Android 16 / API 36 (OxygenOS 16.0.5, model CPH2621).
+- The Anker dock is charge-only; adb runs over Wireless debugging (`adb pair`, then mDNS auto-connects). If `adb devices` shows the phone twice (IP and mDNS name), `adb disconnect <ip:port>` so only one remains; pass `-s <serial>`.
+- Wireless adb is not a reliable lockout safety net; use a direct USB data cable before Step 7.
