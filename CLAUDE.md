@@ -51,4 +51,7 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 ### Step 4 â€” real sensors (pending field test)
 - Nord step detector is `oplus pedometer`, non-wakeup only: with screen off, events may be batched or held until wake. Step log lines carry "sensor delay" to measure it.
 - FGS type `health` (ACTIVITY_RECOGNITION) for now; `location` gets added with GPS speed in Step 5.
+- Field: transitions and 10 s countdown correct; desk 10 min had zero false steps; screen-locked steps arrived live (3–56 ms delay).
+- Nord step detector fires ~1 event/s (vs ~1.8 real steps/s), so 10 "steps" is about 10 s of walking. Not yet known if capped or skipping.
+- AR reported WALKING ~23 s late and STILL ~2 min late, confirming steps must drive timing.
 - Wireless adb: after re-pairing, mDNS can list the old and new endpoints; disconnect the stale one. Log file: `adb exec-out run-as com.example.lookup cat files/lookup.log`.
