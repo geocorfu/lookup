@@ -42,3 +42,9 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 - Dev phone is Android 16 / API 36 (OxygenOS 16.0.5, model CPH2621).
 - The Anker dock is charge-only; adb runs over Wireless debugging (`adb pair`, then mDNS auto-connects). If `adb devices` shows the phone twice (IP and mDNS name), `adb disconnect <ip:port>` so only one remains; pass `-s <serial>`.
 - Wireless adb is not a reliable lockout safety net; use a direct USB data cable before Step 7.
+### Step 3 — state machine
+- `DetectionStateMachine.handle(event, nowMs)` returns a `Snapshot`; adapters must send `Tick` (~1 s) so timeouts fire without steps.
+- Timeouts run before each event, so a late step after a long silence starts a new walk instead of extending the block.
+- The still countdown is 10 s measured from the last step; it becomes visible after `stillGapMs` (2 s).
+- Suppression (vehicle activity OR speed, zone, outside window) forces IDLE and ignores steps until all clear.
+- `stillGapMs` and `candidateResetMs` are guesses; tune them in Step 4 field tests (screen-off step batching may need larger gaps).
