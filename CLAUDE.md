@@ -70,3 +70,10 @@ Look Up is a personal, sideloaded Android app that blocks the phone with a full-
 - Step 4.8 + Step 5: bus/car ride (vehicle by speed, no blocking while riding, release ~60 s after getting off).
 - Step 4 threshold: compare step counter vs detector totals on a ~1 min walk.
 - Step 6: Home zone walk; window starting in 5 min; edit during a window stays pending.
+
+## Resume point (21/10/2026)
+- Steps 1-6 done and pushed. Step 7 (blocking) plan presented, awaiting approval; no Step 7 code yet.
+- Plan: AccessibilityService + TYPE_ACCESSIBILITY_OVERLAY (Maps + Emergency buttons), shade auto-collapse if the overlay can't cover it, showWhenLocked activity as lock-screen fallback; SYSTEM_ALERT_WINDOW dropped.
+- Prototype order: P1 debug-triggered overlay + window logging, P2 media-controls test (lock screen, shade, QS), P3 allow-list Maps/dialer/in-call, P4 volume keys, then onboarding for the accessibility toggle.
+- Escapes: `adb uninstall com.example.lookup`, debug broadcast `com.example.lookup.DEBUG_DISMISS`, 2-min auto-off in prototype, Safe Mode.
+- Blocker: needs a USB data cable plugged into the PC (21/10 Windows saw no device; cable or dock is charge-only).
